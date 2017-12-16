@@ -191,14 +191,17 @@ signal start_enc : std_logic := '0';
 signal start_dec : std_logic := '0';
 signal start_exp : std_logic := '0';
 
+signal step_clk : std_logic;
+
 --hex signal
 type arr is array(0 to 22) of std_logic_vector(7 downto 0);
 signal NAME: arr;
 signal Val : std_logic_vector(3 downto 0) := (others => '0');
 signal HexVal: std_logic_vector(31 downto 0);
 signal slowCLK: std_logic:='0';
+signal slowCLK1: std_logic:='0';
 signal i_cnt: std_logic_vector(19 downto 0):=x"00000";
-
+signal j_cnt: std_logic_vector(11 downto 0):=x"000";
 --input taking signals
 signal l0 : std_logic_vector(7 downto 0);
 signal l1 : std_logic_vector(7 downto 0);
@@ -234,20 +237,42 @@ signal din : std_logic_vector(63 downto 0);
 
 begin
 
-ProgramCounter: ProgCounter port map(clr=>clr,clk=>clk,addrin=>addrin,addrout=>addrout);
+process(clk)
+begin
+if (rising_edge(clk)) then
+if (j_cnt=x"186")then 
+slowCLK1<=not slowCLK1; 
+j_cnt<=x"000";
+else
+j_cnt<=j_cnt+'1';
+end if;
+end if;
+end process;
+
+
+ProgramCounter: ProgCounter port map(clr=>clr,clk=>step_clk,addrin=>addrin,addrout=>addrout);
 InstructionMemory: InstMem port map(clr=>clr,addr=>addrout,Instr=>Instr);
 Dec: Decoder port map(clr=>clr,Instr=>Instr,Op=>Op,isless=>isless,isequal=>isequal,isload=>isload,
 							isstore=>isstore,i_type=>i_type,isbranch=>isbranch,j_type=>j_type,WE=>WE,sel_rd=>sel_rd,sel_wr=>sel_wr,
 							ALUControl=>ALUControl,next_pc=>next_pc,Funct=>Funct);
-RegFile: RegisterFile port map(clr=>clr,clk=>clk,Instr=>Instr,write_data=>RFWrtData,WE=>WE,Op=>Op,i_type=>i_type,sign_imm=>sign_imm,write_addr=>write_addr,
+RegFile: RegisterFile port map(clr=>clr,clk=>step_clk,Instr=>Instr,write_data=>RFWrtData,WE=>WE,Op=>Op,i_type=>i_type,sign_imm=>sign_imm,write_addr=>write_addr,
 								rs_data=>rs_data,rt_data=>rt_data,data=>data,reg_file=>reg_file);
 								
 ALUnit: ALU port map(clr=>clr,Op=>Op,ALUControl=>ALUControl,rs_data=>rs_data,rt_data=>rt_data,ALUResult=>ALUResult,isequal=>isequal,isless=>isless,data=>data);
-DataMemory: DataMem port map(clr=>clr,clk=>clk,addr=>ALUResult,DMIn=>data,DMOut=>DMOut,data_mem=>data_mem,sel_rd=>sel_rd,sel_wr=>sel_wr,din=>din,l_arr=>l_arr);
+DataMemory: DataMem port map(clr=>clr,clk=>step_clk,addr=>ALUResult,DMIn=>data,DMOut=>DMOut,data_mem=>data_mem,sel_rd=>sel_rd,sel_wr=>sel_wr,din=>din,l_arr=>l_arr);
 Multiplexer: MUX port map(clr=>clr,addrin=>addrin,next_pc=>next_pc,Instr=>Instr,sign_imm=>sign_imm,addrout=>addrout,RFWrtData=>RFWrtData,DMOut=>DMOut,ALUResult=>ALUResult,isload=>isload,data=>data,i_type=>i_type,isstore=>isstore);
 
 --taking input start
 led <= sw;
+
+process(clk,sw,step_clk,btnu)
+begin
+if (sw(15) ='1' and sw(14) = '1' and sw(13) = '1') then
+	step_clk <= btnu;
+else
+	step_clk <= slowCLK1;
+end if;
+end process;
 
 process(btnl,btnd,btnu,btnr,btnc,sw)
 begin
@@ -260,9 +285,9 @@ begin
 		hexval <= addrout;
 	end if;
 --start expansion	
-	if(btnl='1') then
+if(btnl='1') then
 		clr<='0';
-	   start_exp <= '1';
+   start_exp <= '1';
 	end if;
 --start enc
 	if(btnd='1') then
